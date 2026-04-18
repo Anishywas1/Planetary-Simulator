@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Planetary Orbit Simulator</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0a0f1e;
+      color: #e0e0e0;
+      padding: 20px;
+      min-height: 100vh;
+    }
+    h1 { font-size: 18px; font-weight: 500; margin-bottom: 14px; color: #fff; }
+    canvas {
+      display: block;
+      border-radius: 12px;
+      background: #050a14;
+      width: 100%;
+      cursor: crosshair;
+    }
+    .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 14px; }
+    .section-label { font-size: 11px; font-weight: 500; color: #888; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 8px; }
+    .ctrl { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #aaa; margin-bottom: 8px; }
+    .ctrl label { min-width: 90px; }
+    .ctrl input[type=range] { flex: 1; accent-color: #4fc3f7; }
+    .ctrl span { min-width: 38px; text-align: right; font-size: 12px; color: #888; }
+    .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+    button {
+      background: transparent;
+      border: 0.5px solid #444;
+      color: #ccc;
+      padding: 5px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+    }
+    button:hover { background: rgba(255,255,255,0.07); }
+    button:active { transform: scale(0.97); }
+    button.active { background: rgba(79,195,247,0.15); border-color: #4fc3f7; color: #4fc3f7; }
+
+    /* Planet tag list */
+    #planet-list { display: flex; flex-wrap: wrap; gap: 6px; min-height: 28px; margin-top: 10px; }
+    .planet-tag {
+      padding: 3px 10px 3px 8px;
+      border-radius: 99px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      transition: opacity 0.15s, box-shadow 0.15s;
+    }
+    .planet-tag:hover { opacity: 0.8; }
+    .planet-tag.selected { box-shadow: 0 0 0 2px currentColor; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+
+    /* Inspector panel */
+    #inspector {
+      border-radius: 10px;
+      border: 0.5px solid #2a2a2a;
+      overflow: hidden;
+      margin-top: 12px;
+    }
+    #inspector-header {
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 0.5px solid #2a2a2a;
+    }
+    #inspector-body {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+    }
+    .insp-col { padding: 12px 14px; }
+    .insp-col + .insp-col { border-left: 0.5px solid #2a2a2a; }
+    .insp-col-title {
+      font-size: 11px;
+      font-weight: 500;
+      color: #666;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+    .insp-row { margin-bottom: 12px; }
+    .insp-row-label { font-size: 11px; color: #666; margin-bottom: 3px; }
+    .insp-row-val { font-size: 14px; font-weight: 500; color: #e0e0e0; }
+    .insp-row-real { font-size: 11px; color: #888; margin-top: 2px; line-height: 1.4; }
+
+    /* Mini slider inside inspector */
+    .mini-slider {
+      width: 100%;
+      height: 4px;
+      border-radius: 2px;
+      background: #2a2a2a;
+      position: relative;
+      margin: 6px 0 2px;
+    }
+    .mini-fill { height: 100%; border-radius: 2px; }
+    .mini-thumb {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      position: absolute;
+      top: -3px;
+      transform: translateX(-50%);
+    }
+    .mini-range { display: flex; justify-content: space-between; font-size: 10px; color: #555; }
+
+    #insp-empty { padding: 16px 14px; font-size: 13px; color: #555; }
+
+    /* Stats */
+    #stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+    .stat-card { background: rgba(255,255,255,0.05); border-radius: 8px; padding: 8px 10px; }
+    .stat-label { font-size: 11px; color: #666; margin-bottom: 2px; }
+    .stat-val { font-size: 16px; font-weight: 500; color: #ddd; }
+    .empty-msg { font-size: 12px; color: #555; }
+  </style>
+</head>
+<body>
+  <h1>Planetary Orbit Simulator — Kepler + Newton Model</h1>
+  <canvas id="c" width="800" height="420"></canvas>
+
+  <div class="controls">
+    <div>
+      <div class="section-label">Add planet</div>
+      <div class="ctrl"><label>distance</label><input type="range" id="dist" min="60" max="160" value="90" step="5"><span id="dist-out">90</span></div>
+      <div class="ctrl"><label>eccentricity</label><input type="range" id="ecc" min="0" max="0.85" value="0" step="0.05"><span id="ecc-out">0.00</span></div>
+      <div class="ctrl"><label>mass</label><input type="range" id="pmass" min="1" max="8" value="3" step="0.5"><span id="pmass-out">3</span></div>
+      <div class="btn-row">
+        <button onclick="addPlanet()">+ add planet</button>
+        <button onclick="addPreset('inner')">solar inner</button>
+        <button onclick="addPreset('outer')">solar outer</button>
+        <button onclick="clearAll()">clear all</button>
+      </div>
+    </div>
+    <div>
+      <div class="section-label">Simulation</div>
+      <div class="ctrl"><label>star mass</label><input type="range" id="smass" min="500" max="4000" value="1200" step="100"><span id="smass-out">1200</span></div>
+      <div class="ctrl"><label>time step</label><input type="range" id="dt" min="0.05" max="0.6" value="0.15" step="0.05"><span id="dt-out">0.15</span></div>
+      <div class="ctrl"><label>trail length</label><input type="range" id="trailLen" min="0" max="500" value="200" step="50"><span id="trail-out">200</span></div>
+      <div class="btn-row">
+        <button id="pauseBtn" onclick="togglePause()">pause</button>
+        <button id="orbitBtn" onclick="toggleOrbits()">show orbits</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-label" style="margin-top:14px;">
+    Active planets
+    <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;color:#555;"> — click to inspect</span>
+  </div>
+  <div id="planet-list"><span class="empty-msg">No planets yet — add one above</span></div>
+
+  <!-- Inspector panel, shown when a planet is selected -->
+  <div id="inspector">
+    <div id="insp-empty">Select a planet above (or click it on the canvas) to inspect its parameters.</div>
+  </div>
+
+  <div id="stats">
+    <div class="stat-card"><div class="stat-label">Planets</div><div class="stat-val" id="s-count">0</div></div>
+    <div class="stat-card"><div class="stat-label">Avg orbital period</div><div class="stat-val" id="s-period">—</div></div>
+    <div class="stat-card"><div class="stat-label">Kepler's 3rd law</div><div class="stat-val" style="font-size:13px;">T² ∝ a³</div></div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('c');
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    const CX = W / 2, CY = H / 2;
+    const G = 1;
+
+    const COLORS = ['#4fc3f7','#81c784','#ffb74d','#f06292','#ce93d8','#4dd0e1','#aed581','#ff8a65'];
+    let colorIdx = 0, planets = [], paused = false, showOrbits = false, selectedId = null;
+
+    const getSmass = () => +document.getElementById('smass').value;
+    const getDt    = () => +document.getElementById('dt').value;
+    const getTrail = () => +document.getElementById('trailLen').value;
+
+    // ── Sim-to-real conversions ───────────────────────────────────────────────
+    // These map the arbitrary simulation units to approximate real-life values.
+
+    // distance: sim 60–160 → ~0.30–4.0 AU
+    const simToAU = a => (0.3 + (a - 60) / (160 - 60) * 3.7).toFixed(2);
+
+    // planet mass: sim 1–8 → ~0.1–17 Earth masses (M⊕)
+    const simToEarthMass = m => (0.1 + (m - 1) / (8 - 1) * 16.9).toFixed(1);
+
+    // star mass: sim 500–4000 → ~0.5–3.0 solar masses (M☉)
+    const simToSolarMass = sm => (0.5 + (sm - 500) / (4000 - 500) * 2.5).toFixed(2);
+
+    // Orbital period in real years, scaled so that Earth (a=95, smass=1200) = 1 year.
+    // Kepler: T = 2π * sqrt(a³ / G*M)
+    const simPeriodYears = (a, sm) => {
+      const T_planet = 2 * Math.PI * Math.sqrt(a ** 3 / (G * sm));
+      const T_earth  = 2 * Math.PI * Math.sqrt(95 ** 3 / (G * 1200));
+      return (T_planet / T_earth).toFixed(2);
+    };
+
+    // Plain-English descriptions
+    const eccDesc  = e => e < 0.05 ? 'nearly circular' : e < 0.2 ? 'slightly elliptical' : e < 0.5 ? 'moderately elliptical' : 'highly elliptical';
+    const massDesc = m => m <= 1.5 ? 'rocky (Mars-like)' : m <= 3 ? 'super-Earth' : m <= 5 ? 'mini-Neptune' : 'gas giant';
+
+    // ── Inspector panel ───────────────────────────────────────────────────────
+    function renderInspector(p) {
+      const el = document.getElementById('inspector');
+      if (!p) {
+        el.innerHTML = '<div id="insp-empty">Select a planet above (or click it on the canvas) to inspect its parameters.</div>';
+        return;
+      }
+
+      const sm  = getSmass();
+      const au  = simToAU(p.a);
+      const em  = simToEarthMass(p.mass);
+      const yr  = simPeriodYears(p.a, sm);
+      const sM  = simToSolarMass(sm);
+      const T_sim = (2 * Math.PI * Math.sqrt(p.a ** 3 / (G * sm))).toFixed(1);
+
+      // Percentage positions for mini sliders (0–100)
+      const distPct = ((p.a    - 60) / (160 - 60) * 100).toFixed(1);
+      const eccPct  = (p.ecc          /  0.85      * 100).toFixed(1);
+      const massPct = ((p.mass -  1) / (8  -  1)  * 100).toFixed(1);
+
+      function miniSlider(pct, color) {
+        return `
+          <div class="mini-slider">
+            <div class="mini-fill" style="width:${pct}%;background:${color}44;"></div>
+            <div class="mini-thumb" style="left:${pct}%;background:${color};"></div>
+          </div>`;
+      }
+
+      el.innerHTML = `
+        <div id="inspector-header" style="background:${p.color}0f;">
+          <div style="width:12px;height:12px;border-radius:50%;background:${p.color};flex-shrink:0;"></div>
+          <span style="font-size:14px;font-weight:500;color:${p.color};">${p.name}</span>
+          <span style="font-size:12px;color:#666;margin-left:4px;">— orbit inspector</span>
+        </div>
+        <div id="inspector-body">
+
+          <div class="insp-col">
+            <div class="insp-col-title">slider values</div>
+
+            <div class="insp-row">
+              <div class="insp-row-label">distance</div>
+              <div class="insp-row-val">${p.a}</div>
+              ${miniSlider(distPct, p.color)}
+              <div class="mini-range"><span>60</span><span>160</span></div>
+            </div>
+
+            <div class="insp-row">
+              <div class="insp-row-label">eccentricity</div>
+              <div class="insp-row-val">${p.ecc.toFixed(2)}</div>
+              ${miniSlider(eccPct, p.color)}
+              <div class="mini-range"><span>0</span><span>0.85</span></div>
+            </div>
+
+            <div class="insp-row">
+              <div class="insp-row-label">mass</div>
+              <div class="insp-row-val">${p.mass}</div>
+              ${miniSlider(massPct, p.color)}
+              <div class="mini-range"><span>1</span><span>8</span></div>
+            </div>
+          </div>
+
+          <div class="insp-col">
+            <div class="insp-col-title">real-life equivalents</div>
+
+            <div class="insp-row">
+              <div class="insp-row-label">orbital distance</div>
+              <div class="insp-row-val">${au} AU</div>
+              <div class="insp-row-real">1 AU = Earth–Sun distance (~150M km)</div>
+            </div>
+
+            <div class="insp-row">
+              <div class="insp-row-label">eccentricity</div>
+              <div class="insp-row-val">${p.ecc.toFixed(2)}</div>
+              <div class="insp-row-real">${eccDesc(p.ecc)} — Earth is 0.02, Pluto is 0.25</div>
+            </div>
+
+            <div class="insp-row">
+              <div class="insp-row-label">planet mass</div>
+              <div class="insp-row-val">${em} M⊕</div>
+              <div class="insp-row-real">${massDesc(p.mass)} — Earth = 1, Jupiter = 318</div>
+            </div>
+          </div>
+
+          <div class="insp-col">
+            <div class="insp-col-title">derived physics</div>
+
+            <div class="insp-row">
+              <div class="insp-row-label">orbital period (sim)</div>
+              <div class="insp-row-val">${T_sim} t</div>
+              <div class="insp-row-real">from T = 2π√(a³ / GM)</div>
+            </div>
+
+            <div class="insp-row">
+              <div class="insp-row-label">orbital period (real)</div>
+              <div class="insp-row-val">≈ ${yr} yrs</div>
+              <div class="insp-row-real">scaled so Earth at this star mass = 1 yr</div>
+            </div>
+
+            <div class="insp-row">
+              <div class="insp-row-label">star mass</div>
+              <div class="insp-row-val">${sM} M☉</div>
+              <div class="insp-row-real">our Sun = 1.0 solar mass</div>
+            </div>
+          </div>
+
+        </div>`;
+    }
+
+    // ── Selection ─────────────────────────────────────────────────────────────
+    function selectPlanet(id) {
+      // Clicking the same planet deselects it
+      selectedId = (selectedId === id) ? null : id;
+      updateUI();
+      renderInspector(planets.find(p => p.id === selectedId) || null);
+    }
+
+    // ── Planet management ─────────────────────────────────────────────────────
+    function addPlanet(opt) {
+      const a     = opt ? opt.a    : +document.getElementById('dist').value;
+      const ecc   = opt ? opt.ecc  : +document.getElementById('ecc').value;
+      const mass  = opt ? opt.mass : +document.getElementById('pmass').value;
+      const M     = getSmass();
+      const color = opt ? opt.color : COLORS[colorIdx % COLORS.length];
+      colorIdx++;
+
+      // Vis-viva: place at perihelion, launch perpendicular
+      const r_peri = a * (1 - ecc);
+      const v_peri = Math.sqrt(G * M * (2 / r_peri - 1 / a));
+
+      planets.push({
+        x: CX + r_peri, y: CY,
+        vx: 0, vy: -v_peri,
+        mass, a, ecc, color,
+        trail: [],
+        id: Date.now() + Math.random(),
+        name: opt ? opt.name : `P${planets.length + 1}`,
+      });
+      updateUI();
+    }
+
+    function addPreset(type) {
+      clearAll();
+      if (type === 'inner') {
+        document.getElementById('smass').value = 1200;
+        document.getElementById('smass-out').textContent = '1200';
+        [
+          { name: 'Mercury', a: 55,  ecc: 0.21, mass: 1,   color: '#b0bec5' },
+          { name: 'Venus',   a: 75,  ecc: 0.01, mass: 2,   color: '#ffcc80' },
+          { name: 'Earth',   a: 95,  ecc: 0.02, mass: 2.5, color: '#4fc3f7' },
+          { name: 'Mars',    a: 120, ecc: 0.09, mass: 1.5, color: '#ef9a9a' },
+        ].forEach(p => addPlanet(p));
+      } else {
+        document.getElementById('smass').value = 3000;
+        document.getElementById('smass-out').textContent = '3000';
+        [
+          { name: 'Jupiter', a: 80,  ecc: 0.05, mass: 8, color: '#ffb74d' },
+          { name: 'Saturn',  a: 110, ecc: 0.06, mass: 7, color: '#fff176' },
+          { name: 'Uranus',  a: 140, ecc: 0.05, mass: 5, color: '#80deea' },
+          { name: 'Neptune', a: 165, ecc: 0.01, mass: 5, color: '#7986cb' },
+        ].forEach(p => addPlanet(p));
+      }
+    }
+
+    function removePlanet(id) {
+      planets = planets.filter(p => p.id !== id);
+      if (selectedId === id) { selectedId = null; renderInspector(null); }
+      updateUI();
+    }
+
+    function clearAll() {
+      planets = []; colorIdx = 0; selectedId = null;
+      renderInspector(null); updateUI();
+    }
+
+    function togglePause() {
+      paused = !paused;
+      document.getElementById('pauseBtn').textContent = paused ? 'resume' : 'pause';
+      if (!paused) loop();
+    }
+
+    function toggleOrbits() {
+      showOrbits = !showOrbits;
+      const btn = document.getElementById('orbitBtn');
+      btn.textContent = showOrbits ? 'hide orbits' : 'show orbits';
+      btn.classList.toggle('active', showOrbits);
+    }
+
+    function updateUI() {
+      const list = document.getElementById('planet-list');
+      if (planets.length === 0) {
+        list.innerHTML = '<span class="empty-msg">No planets yet — add one above</span>';
+      } else {
+        list.innerHTML = planets.map(p => {
+          const sel = p.id === selectedId;
+          return `<button class="planet-tag${sel ? ' selected' : ''}"
+              onclick="selectPlanet(${p.id})"
+              style="background:${p.color}${sel ? '33' : '18'};color:${p.color};border:1px solid ${p.color}${sel ? '88' : '33'};">
+            <span class="dot" style="background:${p.color}"></span>
+            ${p.name}
+          </button>`;
+        }).join('');
+      }
+      document.getElementById('s-count').textContent = planets.length;
+      if (planets.length > 0) {
+        const avgA = planets.reduce((s, p) => s + p.a, 0) / planets.length;
+        const T = 2 * Math.PI * Math.sqrt(avgA ** 3 / (G * getSmass()));
+        document.getElementById('s-period').textContent = T.toFixed(1) + ' t';
+      } else {
+        document.getElementById('s-period').textContent = '—';
+      }
+    }
+
+    // ── Rendering ─────────────────────────────────────────────────────────────
+
+    // Draw mathematically exact ellipses. The star sits at one focus.
+    // Ellipse center is offset from the star by c = a*ecc toward aphelion.
+    function drawOrbitPaths(highlightId) {
+      for (const p of planets) {
+        const a  = p.a;
+        const b  = a * Math.sqrt(1 - p.ecc * p.ecc);
+        const cx = CX - a * p.ecc;
+        const isSelected = p.id === highlightId;
+        ctx.save();
+        ctx.beginPath();
+        ctx.ellipse(cx, CY, a, b, 0, 0, Math.PI * 2);
+        ctx.setLineDash(isSelected ? [6, 4] : [4, 6]);
+        ctx.strokeStyle = p.color + (isSelected ? 'cc' : '55');
+        ctx.lineWidth = isSelected ? 1.5 : 1;
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
+      }
+    }
+
+    function step() {
+      const M = getSmass(), dt = getDt(), maxTrail = getTrail();
+      for (const p of planets) {
+        const dx = CX - p.x, dy = CY - p.y;
+        const r  = Math.sqrt(dx * dx + dy * dy);
+        const acc = G * M / (r * r);
+        p.vx += acc * dx / r * dt;
+        p.vy += acc * dy / r * dt;
+        p.x  += p.vx * dt;
+        p.y  += p.vy * dt;
+        p.trail.push([p.x, p.y]);
+        if (p.trail.length > maxTrail) p.trail.shift();
+      }
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, W, H);
+      ctx.fillStyle = '#050a14'; ctx.fillRect(0, 0, W, H);
+
+      // Starfield (deterministic)
+      for (let i = 0; i < 100; i++) {
+        ctx.beginPath();
+        ctx.arc((i*137+11)%W, (i*97+43)%H, ((i*31)%3)*0.4+0.2, 0, Math.PI*2);
+        ctx.fillStyle = `rgba(255,255,255,${0.12+(i%5)*0.05})`;
+        ctx.fill();
+      }
+
+      // Orbit ellipses — always show selected planet's, optionally show all
+      if (showOrbits) {
+        drawOrbitPaths(selectedId);
+      } else if (selectedId) {
+        const p = planets.find(q => q.id === selectedId);
+        if (p) {
+          const a = p.a, b = a * Math.sqrt(1 - p.ecc * p.ecc), cx = CX - a * p.ecc;
+          ctx.save();
+          ctx.beginPath(); ctx.ellipse(cx, CY, a, b, 0, 0, Math.PI * 2);
+          ctx.setLineDash([6, 4]);
+          ctx.strokeStyle = p.color + 'bb'; ctx.lineWidth = 1.5; ctx.stroke();
+          ctx.setLineDash([]); ctx.restore();
+        }
+      }
+
+      // Star glow + body
+      const M = getSmass(), starR = 6 + Math.sqrt(M) * 0.18;
+      const glow = ctx.createRadialGradient(CX, CY, 0, CX, CY, starR * 3);
+      glow.addColorStop(0, '#fffde7'); glow.addColorStop(0.4, '#fff176'); glow.addColorStop(1, 'rgba(255,230,0,0)');
+      ctx.beginPath(); ctx.arc(CX, CY, starR*3, 0, Math.PI*2); ctx.fillStyle = glow; ctx.fill();
+      ctx.beginPath(); ctx.arc(CX, CY, starR,   0, Math.PI*2); ctx.fillStyle = '#fff9c4'; ctx.fill();
+
+      // Planets
+      const maxTrail = getTrail();
+      for (const p of planets) {
+        // Trail
+        if (p.trail.length > 1 && maxTrail > 0) {
+          for (let i = 1; i < p.trail.length; i++) {
+            const alpha = (i / p.trail.length) * 0.55;
+            ctx.beginPath();
+            ctx.moveTo(p.trail[i-1][0], p.trail[i-1][1]);
+            ctx.lineTo(p.trail[i][0],   p.trail[i][1]);
+            ctx.strokeStyle = p.color + Math.floor(alpha*255).toString(16).padStart(2,'0');
+            ctx.lineWidth = 1.5; ctx.stroke();
+          }
+        }
+
+        // Selection halo ring
+        if (p.id === selectedId) {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, (3 + p.mass * 0.7) + 5, 0, Math.PI * 2);
+          ctx.strokeStyle = p.color + '88'; ctx.lineWidth = 1.5; ctx.stroke();
+        }
+
+        // Planet body
+        const r = 3 + p.mass * 0.7;
+        const pg = ctx.createRadialGradient(p.x-r*0.3, p.y-r*0.3, 0, p.x, p.y, r);
+        pg.addColorStop(0, '#fff'); pg.addColorStop(0.4, p.color); pg.addColorStop(1, p.color+'88');
+        ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI*2); ctx.fillStyle = pg; ctx.fill();
+
+        // Label
+        ctx.fillStyle = p.color; ctx.font = '11px system-ui, sans-serif';
+        ctx.fillText(p.name, p.x + r + 3, p.y - r - 2);
+      }
+    }
+
+    function loop() {
+      if (paused) return;
+      step();
+      draw();
+      // Keep inspector live while simulation runs
+      if (selectedId) renderInspector(planets.find(p => p.id === selectedId) || null);
+      requestAnimationFrame(loop);
+    }
+
+    // ── Canvas click — select planet by clicking on it ────────────────────────
+    canvas.addEventListener('click', e => {
+      const rect   = canvas.getBoundingClientRect();
+      const scaleX = W / rect.width;
+      const mx = (e.clientX - rect.left) * scaleX;
+      const my = (e.clientY - rect.top)  * scaleX;
+
+      let hit = null, best = Infinity;
+      for (const p of planets) {
+        const hitR = 3 + p.mass * 0.7 + 8;   // generous hit area
+        const dist = Math.hypot(mx - p.x, my - p.y);
+        if (dist < hitR && dist < best) { best = dist; hit = p; }
+      }
+      if (hit) selectPlanet(hit.id);
+    });
+
+    // ── Slider listeners ──────────────────────────────────────────────────────
+    const sliderMap = {
+      dist: 'dist-out', ecc: 'ecc-out', pmass: 'pmass-out',
+      smass: 'smass-out', dt: 'dt-out', trailLen: 'trail-out',
+    };
+    for (const [id, outId] of Object.entries(sliderMap)) {
+      document.getElementById(id).addEventListener('input', function() {
+        const v = +this.value;
+        document.getElementById(outId).textContent = id === 'ecc' ? v.toFixed(2) : v;
+        if (id === 'smass') {
+          updateUI();
+          if (selectedId) renderInspector(planets.find(p => p.id === selectedId) || null);
+        }
+      });
+    }
+
+    draw();
+    loop();
+  </script>
+</body>
+</html>
